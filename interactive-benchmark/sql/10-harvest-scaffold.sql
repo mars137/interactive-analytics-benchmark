@@ -1,23 +1,4 @@
--- =============================================================================
--- WI-22 Interactive Analytics Benchmark -- 10: harvest scaffolding
--- =============================================================================
--- Harvest MUST be server-side: DATA_AGENT_RUN output truncates at 4 KB in client display,
--- so the full response is stored as VARIANT and flattened in SQL.
---
--- Question design: 4 query classes x 6 accounts spanning the skew tiers, with varied
--- windows. The classes deliberately mirror the Manychat set so the agent corpus and the
--- hand-written control corpus stay comparable:
---   Q1 unique subscribers        -- non-additive, single scan
---   Q2 click-to-DM ratio         -- additive components, single scan
---   Q3 top content by subscribers-- GROUP BY + per-group COUNT DISTINCT
---   Q4 period-over-period delta  -- double scan
---
--- Account tiers come from the MEASURED distribution (10M-row pilot, power law alpha=2):
---   whale  = account_id 1-3       (top account had ~6.1M rows in a 30d window at 4B scale)
---   heavy  = 100-500
---   mid    = 50000-120000         (account 50000 measured ~9.8k rows in a 30d window)
---   light  = 190000+
--- =============================================================================
+-- WI-22: harvest scaffolding. 24 questions across 4 classes x power-law account tiers.
 
 USE ROLE ACCOUNTADMIN;
 USE WAREHOUSE COMPUTE_WH;
@@ -66,7 +47,7 @@ VALUES
 (23, 'Q4', 'heavy', 500,    15, 'Compare total events for account 500 in the 15 days ending 2026-08-21 against the prior 15 days.'),
 (24, 'Q4', 'mid',   120000, 15, 'Did unique subscribers for account 120000 grow or shrink versus the prior 15 days, as of 2026-08-21?');
 
--- Raw agent responses. resp holds the FULL JSON; never rely on client-side output.
+-- Raw agent responses (stored server-side because client output truncates at 4KB)
 CREATE OR REPLACE TABLE IA_BENCH.BENCH.AGENT_HARVEST (
     q_id         NUMBER,
     question     VARCHAR,

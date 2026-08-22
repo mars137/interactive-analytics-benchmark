@@ -1,24 +1,5 @@
--- =============================================================================
--- WI-22 Interactive Analytics Benchmark -- 09: Cortex Agent (agentic analyst)
--- =============================================================================
--- Per the Apr 2026 agentic-analyst release note, an agent with a semantic-view tool now
--- generates SQL DIRECTLY rather than delegating to the Cortex Analyst service. The tool
--- definition is unchanged (`cortex_analyst_text_to_sql`), but the response contains
--- `system_execute_sql` blocks carrying `sql`, `query_id`, and a final `sql`.
---
--- THE CRITICAL FIELD FOR ARM F:
---   tool_resources.<Tool>.execution_environment.warehouse
--- This is the warehouse the agent's generated SQL actually runs on. Arm F flips it between
--- IA_BENCH_INTERACTIVE_XS and IA_BENCH_STD_GEN2_XS to compare the live agentic path.
---
--- Set to COMPUTE_WH here because corpus harvesting does not need the interactive warehouse,
--- and the interactive warehouse is deliberately kept SUSPENDED until every arm can run in a
--- single warm window (each resume costs a 1-hour minimum).
---
--- Orchestration instructions are deliberately plain: the goal is to observe what the agent
--- naturally emits, not to coach it into writing efficient SQL. Over-instructing here would
--- bias the very thing the benchmark measures.
--- =============================================================================
+-- WI-22: Cortex Agent for harvesting an analyst query corpus.
+-- execution_environment.warehouse set to COMPUTE_WH (interactive WHs stay suspended until arms run).
 
 USE ROLE ACCOUNTADMIN;
 USE WAREHOUSE COMPUTE_WH;

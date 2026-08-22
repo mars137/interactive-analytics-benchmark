@@ -97,7 +97,7 @@
 
 <p>It folded, and correctly. The cache budgets were straight from the docs, but the claim that our data would exceed 350GB was an extrapolation it had made up. Worked properly, the realistic hot set was more like 30&ndash;60GB &mdash; nowhere near the budget. The arm as designed would have compared two warehouses that both fit everything comfortably, and I'd have written &ldquo;size doesn't matter&rdquo; on the basis of a test that couldn't have shown otherwise.</p>
 
-<div class="lesson"><strong>Lesson one: ask where a number came from.</strong> Not because agents lie, but because a sourced fact and an inference built on top of it look identical in prose. &ldquo;XS gets 350GB&rdquo; and &ldquo;our table will exceed it&rdquo; were the same confident sentence, and only one of them was real.</div>
+<div class="lesson"><strong>Ask where a number came from.</strong> Not because agents lie, but because a sourced fact and an inference built on top of it look identical in prose. &ldquo;XS gets 350GB&rdquo; and &ldquo;our table will exceed it&rdquo; were the same confident sentence, and only one of them was real.</div>
 
 <p>So we rebuilt the dataset: ~100-byte rows, 4 billion of them, 433GB. Enough to actually exceed the budget.</p>
 
@@ -137,7 +137,7 @@
 
 <p>The real finding is sharper: <strong>without a clustering key, interactive mode doesn't engage on a table this size &mdash; it degrades to your fallback.</strong> Throughput says the same: 340 queries where the clustered arm did 17,654. Fifty-two times fewer.</p>
 
-<div class="lesson"><strong>Lesson two: know what a silent failure looks like in your telemetry before you start measuring.</strong> A benchmark that can't detect its own degradation isn't a benchmark.</div>
+<div class="lesson"><strong>Know what a silent failure looks like in your telemetry before you start measuring.</strong> A benchmark that can't detect its own degradation isn't a benchmark.</div>
 
 <h2 id="what-interactive-buys">What interactive actually buys</h2>
 
@@ -182,7 +182,7 @@
 
 <p>It also explains a published result I'd been puzzling over &mdash; a benchmark on ~1B rows where XS and M performed identically. Same mechanism. When your working set is a rounding error against your cache budget, cache budget isn't your constraint.</p>
 
-<div class="lesson"><strong>Lesson three: the measurement that refuses to reproduce your hypothesis is often the finding.</strong> I set out to prove cache pressure matters and instead measured, precisely, why it usually doesn't.</div>
+<div class="lesson"><strong>The measurement that refuses to reproduce your hypothesis is often the finding.</strong> I set out to prove cache pressure matters and instead measured, precisely, why it usually doesn't.</div>
 
 <h3>Multi-cluster and adaptive made single queries slightly <em>worse</em></h3>
 <p>B2 (90ms) and B3 (95ms) both trailed plain Gen2 XS (85ms) at p50. Multi-cluster adds concurrency capacity; adaptive adds elasticity. Neither makes an individual query faster, and at this concurrency the extra machinery is pure overhead. Obvious in hindsight. Not obvious when I listed the arms.</p>
@@ -208,7 +208,7 @@
 
 <p><strong>If you're adopting interactive warehouses to make your Cortex Analyst agent feel faster, you're optimising the wrong 0.2%.</strong> Interactive earns its keep in the replayed-SQL layer &mdash; dashboards, drilldowns, direct queries &mdash; where I measured 2&ndash;3x. Not in the agent's response time.</p>
 
-<div class="lesson"><strong>Lesson four: run the null comparison.</strong> Point both arms at the same thing and see what &ldquo;nothing&rdquo; measures. If you haven't, you don't know whether your result is a result.</div>
+<div class="lesson"><strong>Run the null comparison.</strong> Point both arms at the same thing and see what &ldquo;nothing&rdquo; measures. If you haven't, you don't know whether your result is a result.</div>
 
 <h2 id="controls">Semantic-view syntax vs hand-written SQL</h2>
 

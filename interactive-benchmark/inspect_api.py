@@ -1,10 +1,4 @@
-"""Inspect FlakeBench's OpenAPI spec for the template-creation contract.
-
-Written as a file rather than a heredoc because this shell mangles heredocs.
-Goal: learn the exact request schema for creating a DB-stored template, so the
-8 arm templates can be created programmatically instead of guessing the
-TEST_TEMPLATES.CONFIG JSON shape.
-"""
+"""Inspect FlakeBench's OpenAPI spec to learn the template-creation request schema."""
 import json
 import sys
 
@@ -31,7 +25,7 @@ def resolve(ref, seen=None):
 
 
 def describe(schema, depth=0, maxdepth=2):
-    """Print a compact field listing for a schema."""
+    """Print a compact field listing."""
     pad = "  " * (depth + 1)
     if "$ref" in schema:
         schema = resolve(schema["$ref"])

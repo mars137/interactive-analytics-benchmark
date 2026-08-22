@@ -1,21 +1,8 @@
 #!/usr/bin/env python3
-"""
-WI-22 control-corpus runner.
+"""WI-22 control-corpus runner.
 
-Runs CONTROL_SV and CONTROL_HUMAN against a chosen warehouse, tagging every statement with a
-QUERY_TAG so extraction can correlate EXACTLY rather than by time window. (Time-window
-correlation was necessary for the FlakeBench arms because FlakeBench does not set a tag; here we
-control the driver, so we do it properly.)
-
-Two questions this answers that the replayed agent corpus cannot:
-  1. CONTROL_SV  -- what does SEMANTIC_VIEW() syntax cost at query time? An earlier probe spent
-     2427ms of 2582ms (94%) in COMPILATION. The agent never emits this syntax -- it emits
-     pre-expanded SQL -- so this measures what the agent's expansion SAVES.
-  2. CONTROL_HUMAN -- the same questions written the way a human writes them, notably Q4 in the
-     two-CTE / two-scan form, versus the agent's single-scan conditional aggregation.
-
-Note an asymmetry in the corpus: CONTROL_SV has Q1, Q2, Q3, Q3b while CONTROL_HUMAN has Q1..Q4.
-Only Q1-Q3 are directly comparable across the two sets; do not pair Q3b with Q4.
+Runs CONTROL_SV and CONTROL_HUMAN against a chosen warehouse, tagged by QUERY_TAG for exact
+extraction. Measures semantic-view expansion cost and human-vs-agent SQL patterns.
 """
 import argparse, os, random, statistics, sys, time
 from datetime import datetime, timezone
@@ -49,15 +36,10 @@ def main():
         warehouse=args.warehouse,
         database="IA_BENCH",
         schema="BENCH",
-        # The corpus uses `?` placeholders (matching the agent corpus bind convention), but the
-        # connector defaults to pyformat (%s) and fails with "not all arguments converted during
-        # string formatting". qmark is required.
-        paramstyle="qmark",
+        paramstyle="qmark",  # corpus uses ? placeholders
     )
     cur = conn.cursor()
 
-    # Result cache OFF: otherwise repeated identical binds return instantly and we measure
-    # nothing about the table or the warehouse.
     cur.execute("ALTER SESSION SET USE_CACHED_RESULT = FALSE")
 
     cur.execute("SELECT account_id FROM IA_BENCH.BENCH.ACCOUNT_POOL")

@@ -12,8 +12,6 @@ became a lesson. Every time it pushed back and *it* was right, that became a bet
 We ended up with 4 billion rows, 433GB, nine warehouse configurations, and a pile of results —
 several of which contradicted what one of us confidently predicted at the start.
 
-Here's what actually happened.
-
 ---
 
 ## The first thing I did was catch it being wrong
@@ -32,8 +30,7 @@ the realistic hot set was something like 30-60GB — nowhere near the budget. Th
 would have compared two warehouses that both fit everything comfortably, and then I'd have
 written "size doesn't matter" on the basis of a test that couldn't have shown otherwise.
 
-**Lesson one: ask where a number came from.** Not because agents lie, but because a sourced fact
-and an inference built on top of it look identical in prose. "XS gets 350GB" and "our table will
+**Ask where a number came from.** Not because agents lie, but because a sourced fact and an inference built on top of it look identical in prose. "XS gets 350GB" and "our table will
 exceed it" were the same confident sentence, and only one of them was real.
 
 So we rebuilt the dataset: widen the row to ~100 bytes and push to 4 billion rows, 433GB. Enough
@@ -81,12 +78,10 @@ standard M warehouse. Every one reported success.
 Without that screen I'd have published "interactive warehouse: 8,731ms p50" as a finding. It
 isn't interactive latency. It's mostly standard-M latency plus a wasted interactive attempt.
 
-The real finding is sharper and more useful: **without a clustering key, interactive mode doesn't
-engage on a table this size — it degrades to your fallback.** Throughput tells the same story:
+The real finding is sharper: **without a clustering key, interactive mode doesn't engage on a table this size. It degrades to your fallback.** Throughput tells the same story:
 340 queries where the clustered arm did 17,654. Fifty-two times fewer.
 
-**Lesson two: know what a silent failure looks like in your telemetry before you start
-measuring.** A benchmark that can't detect its own degradation isn't a benchmark.
+**Know what a silent failure looks like in your telemetry before you start measuring.** A benchmark that can't detect its own degradation isn't a benchmark.
 
 ## What interactive actually buys
 
@@ -154,8 +149,8 @@ This also explains a published result I'd been puzzling over — a benchmark on 
 and M performed identically. It's the same mechanism. When your working set is a rounding error
 against your cache budget, cache budget isn't your constraint.
 
-**Lesson three: the measurement that refuses to reproduce your hypothesis is often the finding.**
-I set out to prove cache pressure matters and instead measured, precisely, why it usually doesn't.
+**The measurement that refuses to reproduce your hypothesis is often the finding.**
+I set out to prove cache pressure matters and instead measured why it usually doesn't.
 
 ### Multi-cluster and adaptive made single queries slightly *worse*
 
@@ -194,8 +189,7 @@ calls, token generation.
 are optimising the wrong 0.2%.** Interactive earns its keep in the replayed-SQL layer —
 dashboards, drilldowns, direct queries — where I measured 2-3x. Not in the agent's response time.
 
-**Lesson four: run the null comparison.** Point both arms at the same thing and see what
-"nothing" measures. If you haven't, you don't know whether your result is a result.
+**Run the null comparison.** Point both arms at the same thing and see what "nothing" measures. If you haven't, you don't know whether your result is a result.
 
 ## Four more things that bit me
 

@@ -1,20 +1,10 @@
 """Generate FlakeBench arm templates from the frozen replay corpus.
 
-Contract notes (all learned from reading the code, not guessed):
-  * The executor reads scenario.custom_queries, and requires workload_type = CUSTOM
-    (backend/models/test_config.py:323, :370-373).
-  * Each entry: kind/query_kind = GENERIC_SQL, id, operation_type READ|WRITE, sql,
-    weight_pct, parameters[] (backend/core/test_executor.py:_init_custom_workload).
-  * IMPORTANT: weight_pct is a PERCENT 0-100 rounded to 2dp; the code multiplies by 100
-    to get basis points and then requires the total to be EXACTLY 10000. So the percents
-    must sum to exactly 100.00 -- naive equal division of 26 queries does not.
-  * Parameter strategy 'choice' takes {"strategy": "choice", "values": [...]}.
-
-Usage:
-  python gen_templates.py --list                 # show planned arms
-  python gen_templates.py --arm A --dry-run      # print config JSON only
-  python gen_templates.py --arm A                # create via API
-  python gen_templates.py --all                  # create all arms
+Key contract details:
+  * workload_type must be CUSTOM; custom_queries entries need kind GENERIC_SQL
+  * weight_pct is a percent 0-100 at 2dp; total must equal exactly 100.00
+    (executor multiplies by 100 to get basis points, rejects != 10000)
+  * Parameter strategy 'choice' takes {"strategy": "choice", "values": [...]}
 """
 from __future__ import annotations
 
@@ -47,11 +37,7 @@ SQL_COL = {
 
 
 def snow_json(query: str) -> list[dict[str, Any]]:
-    """Run a query via the snow CLI and return rows as dicts.
-
-    The snow CLI prefers env vars over connections.toml, and a stale empty
-    SNOWFLAKE_PASSWORD breaks it, so the caller must run with a clean environment.
-    """
+    """Run a query via snow CLI and return rows as dicts."""
     proc = subprocess.run(
         ["snow", "sql", "-c", CONN, "--format", "json", "-q", query],
         capture_output=True, text=True,
@@ -90,12 +76,7 @@ def fetch_accounts(limit: int = 300) -> list[int]:
 
 
 def even_weights(n: int) -> list[float]:
-    """Weights summing to EXACTLY 100.00 at 2dp.
-
-    Required because the executor converts percent->basis points and rejects any total
-    that is not exactly 10000. Equal division of 26 leaves a 0.16 remainder, which is
-    pushed onto the first entry.
-    """
+    """Weights summing to exactly 100.00 at 2dp (executor rejects != 10000 basis points)."""
     base = int(10000 / n) / 100.0            # 2dp floor, e.g. 3.84 for n=26
     weights = [base] * n
     remainder = round(100.0 - base * n, 2)   # e.g. 0.16
@@ -118,33 +99,20 @@ def build_config(arm: str, accounts: list[int], duration: int, concurrency: int)
             "label": f"{entry['q_class']} agent block",
             "weight_pct": w,
             "sql": entry["sql"],
-            # single bind: account_id, drawn from the skew-weighted pool
             "parameters": [{"strategy": "choice", "values": accounts}],
         })
 
     return {
         "workload_type": "CUSTOM",
-
-        # The TEMPLATE route reads `generic_queries` (config_normalizer.py:73,140), NOT
-        # `custom_queries` -- that is the SCENARIO field the executor reads later. Using the
-        # wrong one yields "Custom query weights must sum to 100.00 (currently 0.00)" because
-        # the generic list comes through empty.
+        # template route reads generic_queries, not custom_queries (config_normalizer.py:73)
         "generic_queries": custom_queries,
-
-        # The four shortcut pct fields are summed ALONGSIDE the generic weights and the total
-        # must be exactly 100.00 (config_normalizer.py:142-148). Zero them explicitly so the
-        # generics own the whole distribution.
+        # must be zero: summed alongside generic weights and total must == 100.00
         "custom_point_lookup_pct": 0,
         "custom_range_scan_pct": 0,
         "custom_insert_pct": 0,
         "custom_update_pct": 0,
 
-        # Target object. NOTE: the template config uses FLAT keys, not the nested
-        # table_configs/warehouse_configs lists from the TestScenario model. The registry
-        # reads cfg["table_name"], cfg["database"], cfg["schema"], cfg["table_type"] and
-        # cfg["warehouse_name"] (backend/core/test_registry.py:116-157) and raises
-        # "table_name is required" / "warehouse_name is required" otherwise.
-        # FlakeBench never creates tables, so all of these must already exist.
+        # template config uses flat keys (not nested table_configs/warehouse_configs)
         "table_name": table,
         "database": DB,
         "schema": SCHEMA,
@@ -152,21 +120,13 @@ def build_config(arm: str, accounts: list[int], duration: int, concurrency: int)
         "warehouse_name": warehouse,
 
         "duration_seconds": duration,
-        "warmup_seconds": 0,          # warming is handled out of band, deliberately
+        "warmup_seconds": 0,
         "concurrent_connections": concurrency,
         "load_mode": "CONCURRENCY",
-        # The normaliser defaults autoscale_enabled to TRUE. Left on, FlakeBench would vary
-        # concurrency during a run, so arms would not be comparable to each other. Pin it off:
-        # every arm must face exactly the same fixed c=N.
-        "autoscale_enabled": False,
-        "think_time_ms": 0,           # shipped OLAP template used 1000ms; wrong for sub-second
+        "autoscale_enabled": False,   # pin concurrency fixed across arms
+        "think_time_ms": 0,
         "metrics_interval_seconds": 1.0,
-
-        # MUST be false or later arms measure the result cache, not the data cache
-        "use_cached_result": False,
-
-        # Retargeted from the shipped olap_analytics.yaml values of 5000/10000 ms, which
-        # exceed the interactive warehouse's entire 5s ceiling and would pass trivially.
+        "use_cached_result": False,    # must be false or later arms measure result cache
         "target_generic_sql_p95_latency_ms": 500,
         "target_generic_sql_p99_latency_ms": 1000,
         "target_generic_sql_error_rate_pct": 1.0,

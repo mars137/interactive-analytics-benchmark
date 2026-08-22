@@ -1,22 +1,8 @@
 #!/usr/bin/env python3
-"""
-WI-22 arm F: LIVE agent latency, interactive vs standard.
+"""WI-22 arm F: live agent latency, interactive vs standard.
 
-Arms A-E replay harvested SQL, which isolates the engine but strips out everything the agent
-itself costs (planning, semantic-view resolution, tool orchestration, token generation). Arm F
-measures the thing a user actually waits for: a natural-language question answered end to end.
-
-The lever is `tool_resources.EngagementAnalyst.execution_environment.warehouse` -- the warehouse
-the agent's generated SQL runs on. Everything else in the spec is held identical, so the only
-difference between the two conditions is where the SQL executes.
-
-Invoked through SNOWFLAKE.CORTEX.DATA_AGENT_RUN, which requires CONSTANT arguments, so each
-question is inlined as a literal rather than bound.
-
-EXPECTED FINDING (state it either way): agent-side overhead is likely to dominate. If the
-engine difference is ~50ms and agent orchestration is ~2-5s, then the interactive warehouse is
-close to invisible at this layer -- which is itself the useful result for anyone hoping
-interactive mode makes their agent feel fast.
+Measures end-to-end user wait via DATA_AGENT_RUN. The only difference between conditions
+is tool_resources.EngagementAnalyst.execution_environment.warehouse.
 """
 import argparse, json, os, statistics, time
 from datetime import datetime, timezone
@@ -67,7 +53,7 @@ def private_key_der(path):
 
 
 def run_condition(cur, label, target_wh, reps):
-    # Repoint the agent. CREATE OR REPLACE keeps the spec byte-identical apart from the warehouse.
+    # Repoint the agent to target_wh via CREATE OR REPLACE.
     cur.execute(
         "CREATE OR REPLACE AGENT IA_BENCH.BENCH.ENGAGEMENT_AGENT "
         "WITH PROFILE = '{\"display_name\": \"Engagement Analyst (benchmark)\"}' "
@@ -112,11 +98,7 @@ def main():
     ap.add_argument("--reps", type=int, default=2, help="passes over the question set")
     args = ap.parse_args()
 
-    # Arm F needs ACCOUNTADMIN, because CREATE OR REPLACE AGENT requires ownership of the agent
-    # and the agent was created by ACCOUNTADMIN. That rules out the IA_BENCH_SVC key pair used
-    # by the other runners, so this one authenticates as ATAHIR with the injected connection
-    # password -- which means arm F must be run in the FOREGROUND (background shells do not
-    # inherit that variable).
+    # Requires ACCOUNTADMIN (agent ownership); must run in foreground (password from env var).
     pw = os.environ.get("SNOWFLAKE_CONNECTIONS_DEMO_ATAHIR_PASSWORD")
     if not pw:
         raise SystemExit(

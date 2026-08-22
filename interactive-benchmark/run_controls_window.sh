@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
-# WI-22: control corpora in ONE interactive resume.
-#
-# Every resume of an interactive warehouse starts a fresh 1-hour billable minimum, so the
-# controls and arm F share a single window. This script deliberately does NOT suspend at the
-# end -- arm F runs next (foreground, because it needs the ACCOUNTADMIN password), and the
-# suspend happens after that.
+# WI-22: run controls and arm F in ONE interactive resume (avoids extra 1-hour billing minimum).
+# Does NOT suspend at end -- arm F runs next in foreground.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 

@@ -1,22 +1,11 @@
--- Warm-state probe. Run repeatedly until pct_from_cache PLATEAUS.
---
--- NOTE the revised gate: with a ~400 GB table against a 350 GB interactive XS cache, the
--- cache can never hold everything, so pct_from_cache will NEVER reach 100. Steady state is
--- roughly 350/400 ~= 87%. The gate is therefore "has it stopped rising", not "is it ~100".
--- Record the plateau value -- it is the mechanism behind any XS vs M difference in arm E.
---
--- Uses a mid-range account and a 30-day window so the probe is representative of the real
--- workload rather than touching an unusually hot or cold slice.
+-- Warm-state probe. Gate is "has pct_from_cache stopped rising" (not 100%, since table > cache).
 
 USE WAREHOUSE IA_BENCH_INTERACTIVE_XS;
 
--- CRITICAL: without this, repeating the probe hits the RESULT cache and returns no
--- TableScan operator at all (observed: third probe returned all NULLs). We want the
--- table DATA cache, never the result cache.
+-- Must disable result cache or repeated probes return no TableScan operator.
 ALTER SESSION SET USE_CACHED_RESULT = FALSE;
 
--- Vary the account per run so we sample different partitions rather than re-reading one
--- warm slice, which would overstate cache coverage.
+-- Vary account per run to sample different partitions.
 SELECT COUNT(*) AS rows_matched, SUM(event_count) AS total_events
 FROM IA_BENCH.BENCH.FACT_NONCLUSTERED
 WHERE account_id = 50000

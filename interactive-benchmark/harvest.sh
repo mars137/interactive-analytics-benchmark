@@ -1,17 +1,10 @@
 #!/usr/bin/env bash
-# WI-22 harvest runner.
-#
-# DATA_AGENT_RUN requires CONSTANT arguments, so it cannot be driven from a table column
-# (verified: "argument 1 ... needs to be constant"). Each question therefore gets its own
-# statement with the text inlined as a literal, which also isolates failures: one bad
-# question does not lose the whole harvest.
-#
-# Responses are stored as VARIANT server-side because client output truncates at 4 KB.
+# WI-22 harvest: run each question through DATA_AGENT_RUN and store responses server-side.
+# Each question is a separate statement (DATA_AGENT_RUN requires CONSTANT arguments).
 
 set -uo pipefail
 
-# The snow CLI prefers env vars over connections.toml; a stale empty SNOWFLAKE_PASSWORD
-# (left behind by sourcing FlakeBench's .env) makes it fail with "Password is empty".
+# Clear env vars that override connections.toml
 unset SNOWFLAKE_PASSWORD SNOWFLAKE_USER SNOWFLAKE_ACCOUNT SNOWFLAKE_ROLE \
       SNOWFLAKE_WAREHOUSE SNOWFLAKE_DATABASE SNOWFLAKE_SCHEMA \
       SNOWFLAKE_PRIVATE_KEY_PATH SNOWFLAKE_PRIVATE_KEY_PASSPHRASE
@@ -25,8 +18,6 @@ ok=0; fail=0
 
 while IFS=$'\t' read -r qid question; do
     [ -z "${qid:-}" ] && continue
-
-    # Escape single quotes for the SQL literal.
     esc_q=${question//\'/\'\'}
 
     sql="INSERT INTO IA_BENCH.BENCH.AGENT_HARVEST (q_id, question, resp)

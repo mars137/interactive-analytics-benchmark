@@ -1,13 +1,5 @@
--- Fallback proof + arm D shape probe, all in ONE session so LAST_QUERY_ID() works.
---
--- Why this exists: SHOW WAREHOUSES on this account has no FALLBACK_WAREHOUSE column, so
--- the ALTER ... SET FALLBACK_WAREHOUSE could only be confirmed functionally. Per docs, a
--- query exceeding the interactive 5s ceiling is transparently re-run on the fallback
--- warehouse and the lost time appears as FAULT_HANDLING_TIME.
---
--- The filter here is deliberately selective, but FACT_NONCLUSTERED has clustering depth
--- 24448 (every partition overlaps every other), so it CANNOT prune -- a single-account
--- filter still scans all partitions. That is exactly the arm D pathology.
+-- Fallback proof: confirms the 5s ceiling triggers re-run on fallback warehouse.
+-- FACT_NONCLUSTERED has clustering depth 24448 so it cannot prune -- arm D pathology.
 
 USE WAREHOUSE IA_BENCH_INTERACTIVE_XS;
 

@@ -1,10 +1,4 @@
--- Timed calibration build: 200M rows, enriched wide schema.
--- Purpose: measure (a) rows/sec on IA_BENCH_BUILD_WH and (b) compressed bytes/row,
--- so the full build size and cost can be projected instead of guessed.
---
--- Extra entropy vs FACT_PILOT_WIDE (two more UUID-bearing columns) because generation
--- cost scales with ROW COUNT while cache pressure scales with BYTES -- so more bytes per
--- row means fewer rows to generate for the same GB, i.e. cheaper for the same experiment.
+-- Calibration build: 200M rows to measure bytes/row and rows/sec before full 4B build.
 
 USE WAREHOUSE IA_BENCH_BUILD_WH;
 

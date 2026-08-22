@@ -1,19 +1,8 @@
--- =============================================================================
--- WI-22 Interactive Analytics Benchmark -- 05a: source / non-clustered variant
--- =============================================================================
--- 4B rows at a measured 108.31 bytes/row ~= 403 GiB.
---   * Over the interactive XS cache budget (350 GB) -> real cache pressure on XS
---   * Well under interactive M (1.2 TB)             -> arm E can actually diverge
---
--- This table doubles as the arm D subject (the pruning cliff), so no separate source
--- copy is built -- that saves a whole 400 GiB CTAS.
---
--- Measured build rate: 7.7M rows/s on X-Large => expect ~9 minutes.
--- =============================================================================
+-- WI-22: 4B-row source table (non-clustered). Also serves as arm D subject.
+-- 108 bytes/row ~= 433 GiB: exceeds interactive XS cache (350 GB), under M (1.2 TB).
 
 USE WAREHOUSE IA_BENCH_BUILD_WH;
 
--- Reclaim the pilots; calibration numbers are recorded in the notes.
 DROP TABLE IF EXISTS IA_BENCH.BENCH.FACT_PILOT;
 DROP TABLE IF EXISTS IA_BENCH.BENCH.FACT_PILOT_WIDE;
 DROP TABLE IF EXISTS IA_BENCH.BENCH.FACT_CALIB;
@@ -26,9 +15,7 @@ WITH gen AS (
 base AS (
     SELECT
         rn,
-        -- Power law alpha=2: P(id <= k) = sqrt(k/N), P(id=1) ~ 0.22%.
-        -- Deliberately milder than log-uniform, which put 5.7% of all rows in one
-        -- account and would have guaranteed 5s-ceiling fallback on every whale query.
+        -- Power-law alpha=2 account distribution
         GREATEST(1, LEAST(200000,
             FLOOR(200000 * POWER(UNIFORM(0::FLOAT, 1::FLOAT, RANDOM(11)), 2))
         ))::NUMBER(9,0) AS account_id
@@ -58,8 +45,7 @@ SELECT
     CASE UNIFORM(1, 4, RANDOM(20))
         WHEN 1 THEN 'ios' WHEN 2 THEN 'android' WHEN 3 THEN 'web' ELSE 'desktop'
     END::VARCHAR(16)                                                              AS device,
-    -- High-entropy columns: these are what carry bytes/row from 66 to 108, letting us
-    -- reach 400 GiB with 4B rows instead of 6.5B (generation cost scales with rows).
+    -- High-entropy columns to reach ~108 bytes/row (generation cost scales with rows)
     UUID_STRING()::VARCHAR(36)                                                    AS session_id,
     UUID_STRING()::VARCHAR(36)                                                    AS request_id,
     ('https://ref.example.com/p/' || UNIFORM(100000, 999999, RANDOM(21))::VARCHAR

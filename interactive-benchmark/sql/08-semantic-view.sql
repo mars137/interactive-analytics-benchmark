@@ -1,20 +1,4 @@
--- =============================================================================
--- WI-22 Interactive Analytics Benchmark -- 08: semantic view for the agentic path
--- =============================================================================
--- Built over FACT_CLUSTERED (the clustered standard table) because that is the subject of
--- arms A, B1-B3 and E. The agent queries this view; the harvested SQL is then replayed
--- against each variant.
---
--- Metric design deliberately mirrors the four Manychat query classes so the agent-authored
--- corpus and the hand-written control corpus are comparable:
---   Q1 non-additive single scan  -> UNIQUE_CONTACTS (COUNT DISTINCT)
---   Q2 additive ratio            -> CLICK_TO_DM_RATIO
---   Q3 grouped + per-group distinct -> UNIQUE_CONTACTS grouped by CONTENT_ID
---   Q4 double scan delta         -> agent composes two windows over UNIQUE_CONTACTS
---
--- Synonyms matter here: they are what let the agent map business phrasing onto columns,
--- and a thin synonym list is a common cause of poor agent SQL.
--- =============================================================================
+-- WI-22: semantic view for the agentic path (over FACT_CLUSTERED).
 
 USE ROLE ACCOUNTADMIN;
 USE WAREHOUSE COMPUTE_WH;

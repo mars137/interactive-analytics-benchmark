@@ -1,9 +1,4 @@
-"""Delete all WI22_ARM_* templates so they can be recreated cleanly.
-
-Kept as a script because the arm templates get regenerated whenever a config-contract
-detail is corrected, and stale duplicates would make it ambiguous which template a run
-actually used.
-"""
+"""Delete all WI22_ARM_* templates so they can be recreated cleanly."""
 import json
 import urllib.request
 

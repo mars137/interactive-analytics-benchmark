@@ -1,7 +1,4 @@
--- Control corpora, server-side truth. Correlated by QUERY_TAG (exact) rather than by time
--- window, because run_controls.py sets a tag per corpus/query: 'wi22_ctl_<cond>|<corpus>|<class>'.
--- This is strictly better than the window correlation the FlakeBench arms required, and it also
--- strips out the ~200-300ms of driver/network overhead visible in the client-side numbers.
+-- Control corpora server-side extraction, correlated by QUERY_TAG (exact).
 
 WITH q AS (
     SELECT

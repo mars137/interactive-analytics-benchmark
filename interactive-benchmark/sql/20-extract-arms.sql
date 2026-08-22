@@ -1,13 +1,5 @@
--- Per-arm extraction + FALLBACK SCREEN.
---
--- Correlation is by (warehouse, time window) because FlakeBench's QUERY_EXECUTIONS table is
--- empty on this account, so there is no test_id to join on. Windows come from
--- /tmp/wi22_arm_windows.tsv, which the orchestrator writes.
---
--- The fallback screen is NOT optional. A query that breaches the interactive 5s ceiling is
--- re-run on the FALLBACK_WAREHOUSE and returns SUCCESS -- it looks like a perfectly normal
--- interactive result. The only tells are WAREHOUSE_TYPE != 'INTERACTIVE' and
--- FAULT_HANDLING_TIME > 0. Any arm with fallback in it is not measuring what its name says.
+-- Per-arm extraction with fallback screen.
+-- Correlates by (warehouse, time window) since FlakeBench provides no test_id join.
 
 WITH windows AS (
     SELECT * FROM VALUES
@@ -17,8 +9,7 @@ WITH windows AS (
       ('B1', 'IA_BENCH_STD_GEN2_XS',    '2026-08-21 22:46:13', '2026-08-21 22:51:35'),
       ('B2', 'IA_BENCH_STD_MCW_XS',     '2026-08-21 22:51:35', '2026-08-21 22:57:16'),
       ('B3', 'IA_BENCH_ADAPTIVE_WH',    '2026-08-21 22:57:16', '2026-08-21 23:03:02'),
-      -- arm C re-run after the INTERACTIVE_TABLE grant fix; the original 22:35 attempt failed
-      -- every query in 33s and is deliberately excluded.
+      -- arm C re-run after grant fix; original attempt excluded
       ('C',  'IA_BENCH_INTERACTIVE_XS', '2026-08-21 23:11:19', '2026-08-21 23:17:05')
       AS t(arm, wh, start_utc, end_utc)
 ),
@@ -51,8 +42,7 @@ SELECT
     ROUND(100 * AVG(COMPILATION_TIME / NULLIF(TOTAL_ELAPSED_TIME,0)), 1) AS pct_compile,
     -- pruning + cache (achieved warm state, reported retrospectively)
     ROUND(100 * AVG(PARTITIONS_SCANNED / NULLIF(PARTITIONS_TOTAL,0)), 4) AS pct_partitions,
-    -- Cache: bytes-weighted, per the docs' own recommended aggregate. An unweighted AVG(pct)
-    -- misleads whenever scan sizes vary a lot within an arm (as in the unclustered arm).
+    -- Cache: bytes-weighted per docs' recommended aggregate
     ROUND(100 * SUM(BYTES_SCANNED * PERCENTAGE_SCANNED_FROM_CACHE)
               / NULLIF(SUM(BYTES_SCANNED),0), 2)                AS cache_pct_wtd,
     ROUND(100 * AVG(PERCENTAGE_SCANNED_FROM_CACHE), 2)          AS cache_pct_unwtd,

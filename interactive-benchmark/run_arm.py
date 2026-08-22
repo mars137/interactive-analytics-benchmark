@@ -1,16 +1,4 @@
-"""Run a WI-22 arm through FlakeBench and report what actually happened.
-
-Deliberately checks more than "did it finish":
-  * bind substitution really occurred (distinct account_ids appear in QUERY_HISTORY)
-  * server-side sf_* enrichment populated (FlakeBench's own MERGE from INFORMATION_SCHEMA)
-  * NO fallback contamination -- for interactive arms this is load-bearing, because a query
-    that exceeds the fixed 5s ceiling is transparently re-run on the fallback warehouse and
-    FlakeBench records the FALLBACK timing as if it were interactive.
-
-Usage:
-  python run_arm.py --list
-  python run_arm.py --arm B1 [--duration 120] [--concurrency 10]
-"""
+"""Run a WI-22 arm through FlakeBench, verifying bind substitution and fallback contamination."""
 from __future__ import annotations
 
 import argparse
@@ -96,7 +84,6 @@ def main() -> None:
     if status >= 400:
         sys.exit(1)
 
-    # Poll until terminal
     waited = 0
     last = None
     while waited < args.max_wait:

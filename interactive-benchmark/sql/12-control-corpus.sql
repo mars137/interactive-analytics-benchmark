@@ -1,23 +1,6 @@
--- =============================================================================
--- WI-22 Interactive Analytics Benchmark -- 12: hand-written CONTROL corpus
--- =============================================================================
--- Two control sets, both hand-written, to answer questions the agent corpus alone cannot:
---
---   CONTROL_SV   -- the four Manychat classes expressed in SEMANTIC_VIEW() syntax.
---                   Purpose: quantify the semantic-view expansion cost at query time.
---                   Motivation: a SEMANTIC_VIEW() probe earlier spent 2427 ms of 2582 ms
---                   (94%) in COMPILATION on a ~30-account view. The agent NEVER uses this
---                   syntax -- it emits pre-expanded CTE SQL -- so this control measures what
---                   the agent's own expansion SAVES.
---
---   CONTROL_HUMAN -- the same four classes as base-table SQL written the way the Manychat
---                   article writes them. Critically, Q4 uses the TWO-CTE / TWO-SCAN form.
---                   Purpose: compare against the agent's single-scan conditional aggregation
---                   for the same question. This is the agent-vs-human SQL comparison.
---
--- Both use `?` for account_id, matching the agent corpus, so all corpora share one bind
--- convention and one account pool.
--- =============================================================================
+-- WI-22: hand-written control corpus.
+-- CONTROL_SV: SEMANTIC_VIEW() syntax (measures expansion cost the agent avoids).
+-- CONTROL_HUMAN: base-table SQL, Q4 uses two-scan form vs agent's single-scan approach.
 
 USE ROLE ACCOUNTADMIN;
 USE WAREHOUSE COMPUTE_WH;
@@ -31,9 +14,7 @@ CREATE OR REPLACE TABLE IA_BENCH.BENCH.CONTROL_CORPUS (
     sql_text    VARCHAR
 );
 
--- -----------------------------------------------------------------------------
--- CONTROL_SV -- SEMANTIC_VIEW() syntax (the path the agent does NOT take)
--- -----------------------------------------------------------------------------
+-- CONTROL_SV
 INSERT INTO IA_BENCH.BENCH.CONTROL_CORPUS (ctl_id, corpus, q_class, note, param_count, sql_text)
 SELECT 1, 'CONTROL_SV', 'Q1', 'unique subscribers, single scan', 1,
 $$SELECT * FROM SEMANTIC_VIEW(
@@ -62,9 +43,7 @@ $$SELECT * FROM SEMANTIC_VIEW(
     WHERE events.account_id = ? AND events.event_date >= DATEADD(DAY, -29, CURRENT_DATE)
 )$$;
 
--- -----------------------------------------------------------------------------
--- CONTROL_HUMAN -- base-table SQL, Manychat style. Q4 is deliberately TWO scans.
--- -----------------------------------------------------------------------------
+-- CONTROL_HUMAN (Q4 deliberately uses two-scan form)
 INSERT INTO IA_BENCH.BENCH.CONTROL_CORPUS (ctl_id, corpus, q_class, note, param_count, sql_text)
 SELECT 11, 'CONTROL_HUMAN', 'Q1', 'unique subscribers, single scan', 1,
 $$SELECT COUNT(DISTINCT contact_id) AS unique_subscribers
@@ -98,7 +77,7 @@ prior_window AS (
 SELECT current_window.c - prior_window.c AS delta
 FROM current_window, prior_window$$;
 
--- ctl_id 14 has TWO placeholders (one per CTE) -- fix its declared param_count
+-- Q4 has two placeholders
 UPDATE IA_BENCH.BENCH.CONTROL_CORPUS SET param_count = 2 WHERE ctl_id = 14;
 
 SELECT ctl_id, corpus, q_class, param_count,
