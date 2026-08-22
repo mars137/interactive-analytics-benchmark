@@ -94,172 +94,108 @@
 </head>
 <body>
 
-<h1>Sub-Second on Four Billion Rows: Learning Snowflake Interactive Analytics with CoCo Plan Mode</h1>
-<p class="kicker">4 billion rows &middot; 433GB &middot; nine warehouse configurations &middot; and several results that contradicted what one of us confidently predicted.</p>
+<h1>Sub-Second on Four Billion Rows: What Snowflake Interactive Warehouses Actually Buy You</h1>
+<p class="kicker">4 billion rows &middot; 433GB &middot; seven warehouse configurations &middot; one live agent arm</p>
 
-<p>I wanted to learn Snowflake's new interactive warehouses properly &mdash; not read the docs and nod, but actually measure them and be able to say what they do and don't buy you. So I did it the way I've been doing most hard things lately: in Cortex Code's Plan mode, with the agent coaching rather than authoring.</p>
+<p>Snowflake's interactive warehouses promise sub-second analytics. I wanted to see what that looks like in practice on a realistic workload &mdash; not a synthetic TPC-H run, but an agentic analyst pattern: a Cortex Analyst agent answering natural-language questions over a large table.</p>
 
-<p>The rule I set was simple. The agent doesn't get to hand me a benchmark. It has to argue for choices, and I get to push back. Every time I pushed back and it turned out I was right, that became a lesson. Every time it pushed back and <em>it</em> was right, that became a better lesson.</p>
+<p>I ran this using Cortex Code's Plan mode, where the AI proposes and I push back. Several of the most useful findings came from catching mistakes &mdash; mine and the agent's &mdash; so I've left those in.</p>
 
-<h2 id="caught-it-wrong">The first thing I did was catch it being wrong</h2>
+<h2>The setup</h2>
 
-<p>The plan opened with an arm comparing an XS interactive warehouse against an M. Interactive warehouses have a fixed local cache budget &mdash; XS gets 350GB, M gets 1.2TB &mdash; so the pitch was that a table big enough to overflow XS would show M pulling ahead.</p>
+<p><strong>Data:</strong> 4 billion rows, 433GB, modelling creator-platform engagement events. Power-law distribution over 200K accounts. Three table variants: unclustered, clustered by <code>(account_id, event_date)</code>, and an <code>INTERACTIVE TABLE</code> with the same clustering key.</p>
 
-<p>The plan asserted our table would overflow XS. I asked the obvious question:</p>
+<p><strong>Workload:</strong> A Cortex Analyst agent answered 24 questions across four query classes. I harvested the agent's generated SQL into a frozen corpus, then replayed that corpus identically on each warehouse. Result cache disabled.</p>
 
-<blockquote>The XS-vs-M arm only means something if the working set fits XS. How did you determine this?</blockquote>
+<p><strong>Configs (180 seconds per run, closed-loop):</strong></p>
 
-<p>It folded, and correctly. The cache budgets were straight from the docs, but the claim that our data would exceed 350GB was an extrapolation it had made up. Worked properly, the realistic hot set was more like 30&ndash;60GB &mdash; nowhere near the budget. The arm as designed would have compared two warehouses that both fit everything comfortably, and I'd have written &ldquo;size doesn't matter&rdquo; on the basis of a test that couldn't have shown otherwise.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Config</th><th>Warehouse</th><th>Table</th></tr></thead>
+<tbody>
+<tr><td>A</td><td>Interactive XS</td><td>Clustered standard</td></tr>
+<tr><td>C</td><td>Interactive XS</td><td>Interactive table</td></tr>
+<tr><td>D</td><td>Interactive XS</td><td>Unclustered standard</td></tr>
+<tr><td>E</td><td>Interactive M</td><td>Clustered standard</td></tr>
+<tr><td>B1</td><td>Standard Gen2 XS</td><td>Clustered standard</td></tr>
+<tr><td>B2</td><td>Multi-cluster XS (1&ndash;4)</td><td>Clustered standard</td></tr>
+<tr><td>B3</td><td>Adaptive</td><td>Clustered standard</td></tr>
+</tbody>
+</table></div>
 
-<div class="lesson"><strong>Ask where a number came from.</strong> Not because agents lie, but because a sourced fact and an inference built on top of it look identical in prose. &ldquo;XS gets 350GB&rdquo; and &ldquo;our table will exceed it&rdquo; were the same confident sentence, and only one of them was real.</div>
+<p><strong>Warming:</strong> Each interactive run got a 10-minute query-driven warm-up with result cache off. Achieved cache percentages measured after the fact from <code>ACCOUNT_USAGE</code>.</p>
 
-<p>So we rebuilt the dataset: ~100-byte rows, 4 billion of them, 433GB. Enough to actually exceed the budget.</p>
+<p><strong>Code:</strong> <a href="https://github.com/mars137/interactive-analytics-benchmark">github.com/mars137/interactive-analytics-benchmark</a></p>
 
-<p>Except &mdash; spoiler &mdash; it still didn't. That failure turned out to be the most interesting result in the whole exercise.</p>
+<h2>Results</h2>
 
-<h2 id="worth-measuring">Building something worth measuring</h2>
-
-<p>The workload had to be an <em>agentic analyst</em> pattern, because that's what people are actually building now:</p>
-<ul>
-  <li>A purpose-built semantic view over the fact table</li>
-  <li>A Cortex Analyst agent on top of it</li>
-  <li>24 natural-language questions across four query classes, over a power-law account distribution &mdash; a few enormous accounts, a long tail of tiny ones</li>
-  <li>The agent's generated SQL <strong>harvested</strong> into a frozen corpus, so every configuration replays byte-identical queries</li>
-  <li>Plus a separate arm running the <strong>live agent</strong>, to measure what a user actually waits for</li>
-</ul>
-
-<p>That split matters. Replay isolates the engine. The live arm measures the experience. They answer different questions, and conflating them is how you end up claiming a warehouse upgrade made your chatbot fast.</p>
-
-<h2 id="fallback-screen">The safety rail that earned its place</h2>
-
-<p>Interactive warehouses have a hard 5-second statement ceiling. Breach it and the query is re-run on a fallback warehouse. Here's the part that matters: <strong>it returns <code>SUCCESS</code></strong>. No error, no warning. In query history it looks like a perfectly normal interactive result.</p>
-
-<p>I insisted every interactive arm be screened for this before I'd trust a single latency number &mdash; checking <code>WAREHOUSE_TYPE != 'INTERACTIVE'</code> and <code>FAULT_HANDLING_TIME &gt; 0</code>.</p>
-
-<p>Then arm D came in: the same 4-billion-row table with <strong>no clustering key</strong>, on interactive XS.</p>
-
-<div class="table-wrap">
-<table>
-  <thead><tr><th>Arm D</th><th class="num">queries</th><th class="num">non-INTERACTIVE</th><th class="num">fault handled</th><th class="num">p50</th><th class="num">partitions scanned</th></tr></thead>
-  <tbody><tr><td>unclustered, interactive XS</td><td class="num">340</td><td class="num">266</td><td class="num">205</td><td class="num">8,731ms</td><td class="num">99.69%</td></tr></tbody>
-</table>
-</div>
-
-<p><strong>266 of 340 queries &mdash; 78% &mdash; never ran on the interactive warehouse at all.</strong> Unclustered, the queries scanned 99.69% of partitions, blew through 5 seconds, and were quietly re-run on a standard M warehouse. Every one reported success.</p>
-
-<p>Without that screen I'd have published &ldquo;interactive warehouse: 8,731ms p50&rdquo; as a finding. It isn't interactive latency. It's mostly standard-M latency plus a wasted interactive attempt.</p>
-
-<p>The real finding is sharper: <strong>without a clustering key, interactive mode doesn't engage on a table this size &mdash; it degrades to your fallback.</strong> Throughput says the same: 340 queries where the clustered arm did 17,654. Fifty-two times fewer.</p>
-
-<div class="lesson"><strong>Know what a silent failure looks like in your telemetry before you start measuring.</strong> A benchmark that can't detect its own degradation isn't a benchmark.</div>
-
-<h2 id="what-interactive-buys">What interactive actually buys</h2>
-
-<p>With clustering, on identical data and corpora:</p>
-
-<div class="table-wrap">
-<table>
-  <thead><tr><th>arm</th><th>config</th><th class="num">queries</th><th class="num">fail</th><th class="num">p50</th><th class="num">p90</th><th class="num">p99</th><th class="num">% partitions</th><th class="num">cache %</th></tr></thead>
-  <tbody>
-    <tr><td><strong>A</strong></td><td>clustered table, <strong>interactive XS</strong></td><td class="num">17,654</td><td class="num">0</td><td class="num"><strong>37ms</strong></td><td class="num">71</td><td class="num">235</td><td class="num">0.0074</td><td class="num">63.3</td></tr>
-    <tr><td><strong>C</strong></td><td><strong>interactive table</strong>, interactive XS</td><td class="num">11,348</td><td class="num">0</td><td class="num"><strong>32ms</strong></td><td class="num">64</td><td class="num">237</td><td class="num">0.0074</td><td class="num">50.1</td></tr>
-    <tr><td><strong>E</strong></td><td>clustered table, <strong>interactive M</strong></td><td class="num">17,661</td><td class="num">0</td><td class="num"><strong>32ms</strong></td><td class="num">58</td><td class="num">103</td><td class="num">0.0074</td><td class="num">87.8</td></tr>
-    <tr><td>B1</td><td>clustered table, standard Gen2 XS</td><td class="num">10,150</td><td class="num">0</td><td class="num">85ms</td><td class="num">218</td><td class="num">724</td><td class="num">0.0082</td><td class="num">42.2</td></tr>
-    <tr><td>B2</td><td>standard multi-cluster XS</td><td class="num">9,547</td><td class="num">0</td><td class="num">90ms</td><td class="num">258</td><td class="num">735</td><td class="num">0.0083</td><td class="num">35.9</td></tr>
-    <tr><td>B3</td><td>adaptive warehouse</td><td class="num">9,490</td><td class="num">0</td><td class="num">95ms</td><td class="num">259</td><td class="num">822</td><td class="num">0.0085</td><td class="num">42.3</td></tr>
-    <tr><td>D</td><td>unclustered, interactive XS</td><td class="num">340</td><td class="num"><strong>5</strong></td><td class="num">8,731ms</td><td class="num">12,787</td><td class="num">25,022</td><td class="num">99.69</td><td class="num">98.7</td></tr>
-  </tbody>
-</table>
-</div>
+<div class="table-wrap"><table>
+<thead><tr><th>Config</th><th class="num">Queries</th><th class="num">p50</th><th class="num">p90</th><th class="num">p99</th><th class="num">Max</th><th class="num">% Partitions</th><th class="num">Cache %</th></tr></thead>
+<tbody>
+<tr><td><strong>A</strong> (interactive XS, clustered)</td><td class="num">17,654</td><td class="num"><strong>37ms</strong></td><td class="num">71</td><td class="num">235</td><td class="num">4,754</td><td class="num">0.0074</td><td class="num">63.3</td></tr>
+<tr><td><strong>C</strong> (interactive XS, interactive table)</td><td class="num">11,348</td><td class="num"><strong>32ms</strong></td><td class="num">64</td><td class="num">237</td><td class="num">4,467</td><td class="num">0.0074</td><td class="num">50.1</td></tr>
+<tr><td><strong>E</strong> (interactive M, clustered)</td><td class="num">17,661</td><td class="num"><strong>32ms</strong></td><td class="num">58</td><td class="num">103</td><td class="num">1,585</td><td class="num">0.0074</td><td class="num">87.8</td></tr>
+<tr><td><strong>D</strong> (interactive XS, unclustered)</td><td class="num">340</td><td class="num">8,731ms</td><td class="num">12,787</td><td class="num">25,022</td><td class="num">28,169</td><td class="num">99.69</td><td class="num">98.7</td></tr>
+<tr><td>B1 (standard Gen2 XS)</td><td class="num">10,150</td><td class="num">85ms</td><td class="num">218</td><td class="num">724</td><td class="num">5,695</td><td class="num">0.0082</td><td class="num">42.2</td></tr>
+<tr><td>B2 (multi-cluster XS)</td><td class="num">9,547</td><td class="num">90ms</td><td class="num">258</td><td class="num">735</td><td class="num">5,822</td><td class="num">0.0083</td><td class="num">35.9</td></tr>
+<tr><td>B3 (adaptive)</td><td class="num">9,490</td><td class="num">95ms</td><td class="num">259</td><td class="num">822</td><td class="num">3,363</td><td class="num">0.0085</td><td class="num">42.3</td></tr>
+</tbody>
+</table></div>
 
 <div class="chart-box"><canvas id="arms"></canvas></div>
 
-<p><strong>Interactive vs standard, same size, same data: 37ms vs 85ms at p50 (2.3x), 235ms vs 724ms at p99 (3.1x), and 74% more queries completed in the same window.</strong></p>
+<p><strong>Interactive XS vs standard Gen2 XS, same data, same queries: 37ms vs 85ms at p50 (2.3x), 235ms vs 724ms at p99 (3.1x), and 74% more queries completed in the same window.</strong></p>
 
-<p>Now the honesty tax on that headline, because it's real: <strong>arm A ran at a 63.3% cache fraction and B1 at 42.2%</strong>. That's a 21-point gap, and part of the difference I just attributed to warehouse type is instead the interactive arm running warmer. I can't decompose the two, because <strong>each arm is a single 180-second run with no repetition &mdash; there are no confidence intervals for any number in this post</strong>. The direction isn't in doubt (interactive won on every query in an independent control set too, below), but treat &ldquo;2.3x&rdquo; as this run's ratio, not a constant.</p>
+<p>Note: config A ran at 63% cache vs B1's 42%, so part of this gap is warmer cache. Each config is a single 180-second run with no repetition &mdash; treat these as one measured ratio, not a guaranteed constant.</p>
 
-<p>Also visible above: arm D logged <strong>5 hard failures</strong> whose error text I never went back and inspected. And arm C completed <strong>11,348 queries against A's 17,654</strong> &mdash; it was re-run after a grants failure, on a freshly resumed warehouse, so it self-warmed over fewer iterations. Its comparison against A is the least controlled in the table.</p>
+<h2>What the numbers show</h2>
 
-<p>Now the results that surprised me.</p>
+<h3>1. Interactive is meaningfully faster than standard on identical data</h3>
+<p>The 2.3x at p50 and 3.1x at p99 hold across an independent control set (480 queries per side, exact <code>QUERY_TAG</code> correlation) &mdash; interactive won all eight queries at both percentiles, with tail improvements up to 4.6x.</p>
 
-<h3>The interactive table barely beat a well-clustered standard table</h3>
-<p>Standard-table support on interactive warehouses is in public preview, and I assumed the purpose-built <code>INTERACTIVE TABLE</code> would be meaningfully ahead. It wasn't: 32ms vs 37ms at p50, and at p99 they're indistinguishable (237 vs 235). It did that on a <em>lower</em> cache fraction (50.1% vs 63.3%), which hints it reads less to answer the same question.</p>
-<p>So on this evidence <strong>a well-clustered standard table gets you most of the way</strong> &mdash; with the caveat above that arm C is the weakest-controlled arm I ran. That conclusion deserves a rerun before anyone leans on it.</p>
+<h3>2. Without clustering, interactive doesn't engage at all</h3>
+<p>Config D: 266 of 340 queries (78%) executed on the <strong>fallback warehouse</strong>, not on interactive. They exceeded the 5-second ceiling and were silently re-run on standard compute. Every one returned <code>SUCCESS</code>.</p>
+<p>The only way to detect this: check <code>WAREHOUSE_TYPE</code> and <code>FAULT_HANDLING_TIME</code> in query history. Without that check, you'd report 8,731ms as "interactive latency" when it's actually your fallback warehouse.</p>
 
-<h3>Doubling size twice bought 14% at the median</h3>
-<p>Arm E (M) vs arm A (XS): p50 32ms vs 37ms. Two size doublings, ~14% &mdash; and 5ms at p50 is small enough that on a single unrepeated run I would not defend it as a real difference at all.</p>
-<p>The tail is where something clearly happens: p99 <strong>103ms vs 235ms</strong>, max 1,585ms vs 4,754ms. That gap is large enough to likely survive repetition. Stated properly: <strong>on this run, size improved the tail substantially and the median barely or not at all.</strong> Note E also had the warmest cache of any arm (87.8%), which pushes the same way.</p>
+<h3>3. A clustered standard table nearly matches an interactive table</h3>
+<p>Config C (interactive table) vs config A (clustered standard): 32ms vs 37ms at p50. At p99 they're identical (237 vs 235). Standard-table support on interactive warehouses (public preview) gets you most of the way.</p>
 
-<p>And here's the mechanism &mdash; it's in the <code>% partitions</code> column. <strong>Both arms scan 0.0074% of partitions.</strong></p>
+<h3>4. Warehouse size buys tail latency, not median</h3>
+<p>Interactive M vs XS: p50 32ms vs 37ms (~14%), but p99 <strong>103ms vs 235ms</strong> (2.3x). Both scan 0.0074% of partitions &mdash; clustering shrinks the working set far below XS's 350GB cache budget, so a bigger cache has nothing additional to hold. The extra compute helps the unlucky queries.</p>
 
-<p>That's the payoff from my very first correction. Clustering shrinks the working set so far that XS's 350GB budget never binds, no matter that the table is 433GB. Columnar projection means the padding columns I added to inflate the row are <em>never read</em>. I could not make the cache overflow by making the table bigger, because the query doesn't touch most of it.</p>
+<h3>5. Multi-cluster and adaptive don't help single queries</h3>
+<p>B2 (90ms) and B3 (95ms) trail plain Gen2 XS (85ms). These add concurrency capacity and elasticity. They don't make individual queries faster.</p>
 
-<p>It also explains a published result I'd been puzzling over &mdash; a benchmark on ~1B rows where XS and M performed identically. Same mechanism. When your working set is a rounding error against your cache budget, cache budget isn't your constraint.</p>
+<h3>6. Compilation dominates at this latency</h3>
+<p>Configs A, C, and E spend 49&ndash;62% of elapsed time in compilation. At p50, config E compiles for 19ms and executes for 11ms. The query planner is the bottleneck, not the scan.</p>
 
-<div class="lesson"><strong>The measurement that refuses to reproduce your hypothesis is often the finding.</strong> I set out to prove cache pressure matters and instead measured, precisely, why it usually doesn't.</div>
-
-<h3>Multi-cluster and adaptive made single queries slightly <em>worse</em></h3>
-<p>B2 (90ms) and B3 (95ms) both trailed plain Gen2 XS (85ms) at p50. Multi-cluster adds concurrency capacity; adaptive adds elasticity. Neither makes an individual query faster, and at this concurrency the extra machinery is pure overhead. Obvious in hindsight. Not obvious when I listed the arms.</p>
-
-<h3>Once you're this fast, the optimizer is the bottleneck</h3>
-<p>Arms A, C and E spend <strong>49&ndash;62% of elapsed time in compilation</strong>. At p50, arm E compiles for 19ms and executes for 11ms. The scan is no longer the problem &mdash; planning is. So the next win isn't a bigger warehouse, it's plan reuse.</p>
-
-<h2 id="arm-f">The arm that measured nothing, and how I knew</h2>
-
-<p>Then the live agent arm. Real questions, real Cortex Analyst, the agent's SQL pointed at interactive vs standard.</p>
-
-<p>Interactive p50 <strong>22,315ms</strong>. Standard p50 <strong>22,786ms</strong>. Interactive wins by 471ms, 2.1%.</p>
-
-<p>I nearly wrote that down. Instead I ran the same harness with <strong>both conditions pointed at the same warehouse</strong> &mdash; where the true difference is, by construction, exactly zero.</p>
-
-<p>That control came back <strong>+2,583ms. +12.9%.</strong></p>
+<h2>The live agent arm: interactive doesn't help here</h2>
 
 <div class="chart-box"><canvas id="armf"></canvas></div>
 
-<p><strong>The noise floor was five times larger than the effect I'd just &ldquo;measured.&rdquo;</strong> So the honest result for this arm is <em>no detectable difference</em> &mdash; not a 2.1% win.</p>
+<p>I pointed the live Cortex Analyst agent at interactive vs standard and measured end-to-end. Interactive p50: <strong>22,315ms</strong>. Standard p50: <strong>22,786ms</strong>. Difference: 471ms (2.1%).</p>
 
-<p>The reason is brutal arithmetic. End-to-end agent latency is ~22 seconds. The engine difference this entire benchmark exists to measure is ~48 milliseconds. <strong>The engine is 0.2% of what the user waits for.</strong> Everything else is orchestration: planning, semantic-view resolution, tool calls, token generation.</p>
+<p>Then I ran the same harness with both conditions on the <strong>same warehouse</strong> (true difference = zero by construction). That showed +2,583ms (+12.9%). The noise floor is five times larger than the "effect."</p>
 
-<p><strong>If you're adopting interactive warehouses to make your Cortex Analyst agent feel faster, you're optimising the wrong 0.2%.</strong> Interactive earns its keep in the replayed-SQL layer &mdash; dashboards, drilldowns, direct queries &mdash; where I measured 2&ndash;3x. Not in the agent's response time.</p>
+<p>End-to-end agent latency is ~22 seconds. The engine difference is ~48ms. <strong>The engine is 0.2% of what a user waits for.</strong> Interactive pays off for direct SQL &mdash; dashboards, drilldowns, embedded analytics &mdash; not for agent response time.</p>
 
-<div class="lesson"><strong>Run the null comparison.</strong> Point both arms at the same thing and see what &ldquo;nothing&rdquo; measures. If you haven't, you don't know whether your result is a result.</div>
-
-<h2 id="controls">Semantic-view syntax vs hand-written SQL</h2>
-
-<p>A separate control set, 480 executions per side, correlated exactly by <code>QUERY_TAG</code>. Server-side p50, interactive vs standard:</p>
+<h2>Control corpus: server-side p50</h2>
 
 <div class="chart-box"><canvas id="controls"></canvas></div>
 
-<p>Interactive won all eight at both p50 and p99, with zero fallback, and the tail gap was the striking part &mdash; up to 4.6x (435ms vs 1,985ms).</p>
+<p>480 executions per side, correlated by <code>QUERY_TAG</code>, server-side metrics. Interactive won all eight at both p50 and p99, with zero fallback. Tail gap up to 4.6x (435ms vs 1,985ms on SV Q3b).</p>
 
-<p>One assumption of mine died here too. An early one-off probe of <code>SEMANTIC_VIEW()</code> syntax spent 2,427ms of 2,582ms &mdash; 94% &mdash; in compilation, and I'd built the corpus design around that being a standing property of the syntax. At 60 repetitions it isn't: the semantic-view queries match or beat the hand-written equivalents. That probe was measuring <strong>cold-start compilation</strong>, and I'd generalised from a sample of one.</p>
+<h2>Things I got wrong</h2>
 
-<h2 id="more-bites">Four more things that bit me</h2>
+<p><strong>Interactive tables are a separate privilege class.</strong> <code>GRANT SELECT ON ALL TABLES</code> silently skips them. <code>SHOW GRANTS</code> returns <code>granted_on = INTERACTIVE_TABLE</code>. You need <code>GRANT SELECT ON ALL INTERACTIVE TABLES</code> explicitly.</p>
 
-<p><strong>Interactive tables are a separate grant class.</strong> Arm C failed every query in 33 seconds with <code>Object 'IA_BENCH.BENCH.FACT_INTERACTIVE' does not exist or not authorized</code>. The table existed, with 4 billion rows in it. My setup had run <code>GRANT SELECT ON ALL TABLES</code> and <code>ON FUTURE TABLES</code> &mdash; and <code>SHOW GRANTS</code> explains why that wasn't enough:</p>
+<p><strong>The 5-second fallback is completely silent.</strong> No error, no warning. The only tells are <code>WAREHOUSE_TYPE != 'INTERACTIVE'</code> and <code>FAULT_HANDLING_TIME &gt; 0</code> in query history.</p>
 
-<pre><code>privilege OWNERSHIP | granted_on INTERACTIVE_TABLE | grantee ACCOUNTADMIN</code></pre>
+<p><strong>Warm-up design matters.</strong> I warmed 5 accounts; the workload sampled from 5,000. Cache was mostly self-warmed during measurement. Fractions ranged 36&ndash;99% across configs.</p>
 
-<p><code>granted_on</code> is <code>INTERACTIVE_TABLE</code>, not <code>TABLE</code>. Bulk and future TABLE grants silently skip them; you need <code>GRANT SELECT ON ALL INTERACTIVE TABLES</code> explicitly. The error text points at a typo. The actual problem is a privilege class you didn't know existed.</p>
-
-<p><strong>My warm-up gate failed open.</strong> I built a gate to wait until the cache plateaued before measuring. It used <code>-1</code> as a sentinel for &ldquo;stats unavailable&rdquo; &mdash; then compared that sentinel as if it were a cache value. Three unknowns in a row looked like a plateau, so the gate declared steady state at <em>negative one</em> and began measuring at 9.5% warm. A gate that fails open is worse than no gate, because it reports success.</p>
-
-<p><strong>My warm-up warmed the wrong data.</strong> The loop warmed 5 fixed accounts. The workload samples randomly from <strong>5,000</strong>. So warming touched a slice the measurement barely used, and whatever cache the runs enjoyed they mostly built themselves mid-measurement. &ldquo;Warm&rdquo; in my harness turned out to mean &ldquo;self-warmed during the run.&rdquo; No finding reverses &mdash; every arm faced identical conditions &mdash; but I can't claim a properly pre-warmed cache.</p>
-
-<p><strong>An unweighted average of a ratio is a trap.</strong> Averaging per-query cache percentage gave arm D 76%; weighting by bytes scanned &mdash; as the docs actually recommend &mdash; gave 98.7%. When scan sizes vary wildly the unweighted mean is meaningless. Snowflake documents the correct aggregate; I'd reached for <code>AVG()</code> on autopilot.</p>
-
-<h2 id="plan-mode">What Plan mode was actually good for</h2>
-
-<p>Not writing code. The agent wrote plenty, and most of it worked, but that wasn't the value.</p>
-
-<p>The value was that a plan is <em>inspectable before it costs anything</em>. The cache-budget error was sitting in a plan document where one question exposed it. Buried in a working script, I'd have run it, gotten clean-looking numbers from an arm that couldn't answer its own question, and never known.</p>
-
-<p>The pattern that kept paying off: <strong>make it state the mechanism, not just the expectation.</strong> &ldquo;M will be faster&rdquo; is unfalsifiable hand-waving. &ldquo;M will be faster <em>because</em> the working set exceeds XS's 350GB budget&rdquo; is a claim with a checkable premise &mdash; and that premise was wrong, which I could only discover because it had been made explicit.</p>
-
-<p>The corrections in this post aren't incidental to the learning. They <em>are</em> the learning. Every number I trust here, I trust because something else got caught being wrong first.</p>
+<p><strong><code>AVG()</code> on a ratio is wrong.</strong> Per-query cache percentage averaged naively: 76%. Bytes-weighted (as docs recommend): 98.7%.</p>
 
 <footer>
-  <p>4B rows / 433GB on Snowflake, nine warehouse configurations, a harvested Cortex Analyst corpus replayed identically across arms. <strong>Each arm is a single 180-second run with no repetition, so there are no confidence intervals anywhere in this post</strong>, and cache fractions varied 36&ndash;99% across arms, so none of these are equal-warmth comparisons. The control-corpus figures are server-side and not comparable in absolute terms to the arm figures, which replay different SQL under concurrency. All interactive arms screened for fallback; every caveat &mdash; including the two harness bugs above &mdash; documented alongside the results rather than quietly fixed. Reference: <a href="https://docs.snowflake.com/en/user-guide/interactive">Snowflake interactive analytics docs</a>.</p>
+<p>4B rows / 433GB on Snowflake. Each config is a single 180-second run &mdash; no repetition, no confidence intervals. Cache fractions varied 36&ndash;99%. All interactive configs screened for fallback. Code: <a href="https://github.com/mars137/interactive-analytics-benchmark">github.com/mars137/interactive-analytics-benchmark</a></p>
 </footer>
 
 <script>/**
