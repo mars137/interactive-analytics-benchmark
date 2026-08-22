@@ -1,0 +1,47 @@
+# Secrets and credentials
+*.env
+.env.*
+*.p8
+*.pem
+*.key
+*credentials*
+*secret*
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+
+# FlakeBench (cloned; contains .venv and local patches — reference only, not part of this repo)
+FlakeBench/
+
+# Large unrelated projects
+renewal-planning-companion-react/
+renewal-planning-companion-react.zip
+
+# Temp files and logs
+temp/
+/tmp/
+*.log
+nohup.out
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Snowflake local state (plans etc)
+.snowflake/
+
+# Sizings (empty placeholder — add content directly when needed)
+sizings/
